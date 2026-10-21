@@ -1,0 +1,12 @@
+# 统一行尾，避免 Windows/macOS 协作时整文件 diff
+* text=auto eol=lf
+
+# 二进制资源不要做行尾转换
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.ico binary
+*.pdf binary
+
+# Git 语言统计
+*.py linguist-language=Python

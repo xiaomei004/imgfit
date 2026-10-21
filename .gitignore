@@ -1,0 +1,38 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.conda/
+
+# ---- 测试与覆盖率 ----
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---- 打包产物 ----
+# PyInstaller
+*.spec.bak
+build/__pyinstaller/
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 本项目运行时产物（可能含个人材料，禁止入库）----
+压缩/
+压缩图片/
+_out/
+_preview/
