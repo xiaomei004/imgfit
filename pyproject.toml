@@ -39,6 +39,9 @@ imgfit-gui = "imgfit.gui:main"
 
 [project.urls]
 Homepage = "https://github.com/xiaomei004/imgfit"
+Repository = "https://github.com/xiaomei004/imgfit"
+Issues = "https://github.com/xiaomei004/imgfit/issues"
+Changelog = "https://github.com/xiaomei004/imgfit/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

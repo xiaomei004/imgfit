@@ -1,5 +1,9 @@
 # imgfit
 
+[![CI](https://github.com/xiaomei004/imgfit/actions/workflows/ci.yml/badge.svg)](https://github.com/xiaomei004/imgfit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
+
 **把每张图片精确压进指定大小预算的本地工具** —— 默认 200KB，一句命令批量处理，全程离线。
 
 给网申、报名、政务系统上传材料用的：那些系统普遍限制单张 200KB / 500KB / 1MB，
