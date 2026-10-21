@@ -1,6 +1,7 @@
 # imgfit
 
 [![CI](https://github.com/xiaomei004/imgfit/actions/workflows/ci.yml/badge.svg)](https://github.com/xiaomei004/imgfit/actions/workflows/ci.yml)
+[![coverage](https://raw.githubusercontent.com/xiaomei004/imgfit/badges/coverage.svg)](https://github.com/xiaomei004/imgfit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 
@@ -154,7 +155,8 @@ $env:PYTHONPATH="src"; python -m imgfit --help
 画质零损失，还能省时间。
 
 **为什么重复运行会生成 `(1)`**：默认不覆盖任何已有文件（包括源文件本身永远不被动），
-确认要覆盖就加 `-f`。
+确认要覆盖就加 `-f`。若同一批里有同名文件（例如 `A/证书.jpg` 与 `B/证书.jpg`），
+会用上级目录名区分成 `A_证书.jpg`、`B_证书.jpg`，比 `(1)` 好认。
 
 ## 开发
 
@@ -167,13 +169,18 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -v
 # macOS / Linux
 PYTHONPATH=src python -m unittest discover -s tests -v
 
-# 或者用 pytest（CI 用的是这个）
-pytest -q
+# 或者用 pytest + 覆盖率（CI 用的是这个）
+pytest -q --cov=imgfit --cov-report=term-missing --cov-report=xml
+
+# 由 coverage.xml 生成覆盖率徽章（纯标准库，会推到 badges 分支）
+python tools/coverage_badge.py --xml coverage.xml --out coverage.svg
 ```
 
-65 个单元测试，用合成图（随机噪声 / 文字版式 / 渐变斑块）覆盖核心分支，
-不依赖任何外部素材；GUI 测试在没有显示器的环境下自动跳过。
-GitHub Actions 在 Ubuntu / Windows / macOS × Python 3.9 / 3.12 上跑全套。
+75 个单元测试，用合成图（随机噪声 / 文字版式 / 渐变斑块）覆盖核心分支，
+不依赖任何外部素材；GUI 测试在没有显示器的环境下自动跳过；并行路径用子进程
+真跑 `-j 2` 并与 `-j 1` 的结果**逐字节比对**。
+GitHub Actions 在 Ubuntu / Windows / macOS × Python 3.9 / 3.12 上跑全套，
+每次合并进 `main` 会把覆盖率写进 README 的徽章。
 
 ### 目录结构
 
@@ -184,8 +191,10 @@ src/imgfit/
 ├── pipeline.py   # 批量编排：收集文件、预算分配、并行、报告
 ├── cli.py        # 命令行界面
 └── gui.py        # Tkinter 图形界面
-tests/            # 65 个单元测试
-docs/设计说明.md   # 算法取舍与实测数据
+tools/coverage_badge.py   # coverage.xml → SVG 徽章（无第三方依赖）
+tests/                    # 75 个单元测试
+docs/设计说明.md           # 算法取舍与实测数据
+docs/学习笔记.md           # 这个项目怎么想出来的、代码怎么长这样、CI/CD 笔记
 ```
 
 ## 已知限制
