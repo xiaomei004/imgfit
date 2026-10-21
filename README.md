@@ -195,6 +195,7 @@ tools/coverage_badge.py   # coverage.xml → SVG 徽章（无第三方依赖）
 tests/                    # 75 个单元测试
 docs/设计说明.md           # 算法取舍与实测数据
 docs/学习笔记.md           # 这个项目怎么想出来的、代码怎么长这样、CI/CD 笔记
+docs/对比调研.md           # 与 jpegoptim / ImageMagick / Caesium 等工具的差异分析
 ```
 
 ## 已知限制
