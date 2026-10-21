@@ -2,7 +2,8 @@
 #
 # 策略：
 #   * 每月检查一次，避免每周都在你眼前弹 PR
-#   * 小版本/补丁版本合并成一个 PR（groups），大版本单独一个 PR 自己判断
+#   * 同一生态的升级全部合并成一个 PR（含大版本），避免一次冒出 6 个 PR；
+#     大版本升级会在 PR 描述里标出来，合并前自己看一眼测试结果
 #   * 每个 PR 都会自动跑 CI（ci.yml 里配了 pull_request 触发），绿了才算能升
 version: 2
 
@@ -18,7 +19,6 @@ updates:
     groups:
       python-deps:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

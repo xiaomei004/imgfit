@@ -294,6 +294,23 @@ def allocate_budgets(sizes: Sequence[int], total: int, minimum: int = 1024) -> L
 # ---------------------------------------------------------------- 执行
 
 
+def _canonical(path: Union[str, Path]) -> str:
+    """把路径归一成可比较的字符串。
+
+    必须两边都用同一套归一，否则在 macOS 和 Windows 上会误判成"不同文件"：
+
+    * macOS 的临时目录 ``/var/folders/...`` 实际是 ``/private/var/...`` 的软链
+    * Windows 上 ``C:\\Users\\RUNNER~1\\...`` 是长路径的 8.3 短名
+
+    ``resolve()`` 会把它们展开成规范形式，而"拼出来的候选文件名"是原始形式，
+    直接比较就会认为两者不同 —— 进而把本批次的源文件覆盖掉。
+    """
+    try:
+        return os.path.normcase(os.path.realpath(str(path)))
+    except OSError:  # pragma: no cover - 极端路径异常
+        return os.path.normcase(str(path))
+
+
 def _reserve(
     output_dir: Path,
     stem: str,
@@ -314,7 +331,7 @@ def _reserve(
     candidate = Path(output_dir) / f"{stem}{suffix}"
     index = 1
     while True:
-        key = os.path.normcase(str(candidate))
+        key = _canonical(candidate)
         if key in batch_sources:
             taken = True
         elif key in used:
@@ -351,12 +368,7 @@ def plan_targets(
         key = path.stem.lower()
         stems[key] = stems.get(key, 0) + 1
 
-    batch_sources = set()
-    for path in inputs:
-        try:
-            batch_sources.add(os.path.normcase(str(path.resolve())))
-        except OSError:  # pragma: no cover
-            batch_sources.add(os.path.normcase(str(path)))
+    batch_sources = {_canonical(path) for path in inputs}
 
     used: set = set()
     targets: List[Path] = []

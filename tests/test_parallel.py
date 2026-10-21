@@ -27,14 +27,20 @@ def run_cli(args):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC) + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONUTF8"] = "1"
-    return subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-m", "imgfit", *args],
         capture_output=True,
         text=True,
+        # 必须显式指定编码：Windows CI 的默认 pipe 编码是 cp1252，
+        # 而子进程输出的是 UTF-8 中文，按默认编码解码会直接抛 UnicodeDecodeError
+        encoding="utf-8",
+        errors="replace",
         env=env,
         cwd=str(ROOT),
         timeout=300,
     )
+    result.output = (result.stdout or "") + (result.stderr or "")
+    return result
 
 
 class ParallelTests(unittest.TestCase):
@@ -56,8 +62,8 @@ class ParallelTests(unittest.TestCase):
         out_par = self.root / "j4"
         r1 = run_cli([str(self.inbox), "-t", "100kb", "-o", str(out_seq), "-q"])
         r4 = run_cli([str(self.inbox), "-t", "100kb", "-o", str(out_par), "-j", "2", "-q"])
-        self.assertEqual(r1.returncode, 0, r1.stdout + r1.stderr)
-        self.assertEqual(r4.returncode, 0, r4.stdout + r4.stderr)
+        self.assertEqual(r1.returncode, 0, r1.output)
+        self.assertEqual(r4.returncode, 0, r4.output)
 
         names_seq = sorted(p.name for p in out_seq.iterdir())
         names_par = sorted(p.name for p in out_par.iterdir())
@@ -73,7 +79,7 @@ class ParallelTests(unittest.TestCase):
     def test_duplicate_stems_are_disambiguated_by_folder(self):
         out = self.root / "out"
         result = run_cli([str(self.inbox), "-t", "100kb", "-o", str(out), "-q"])
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.output)
         names = sorted(p.name for p in out.iterdir())
         self.assertIn("甲_证书.jpg", names)
         self.assertIn("乙_证书.jpg", names)
