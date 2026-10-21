@@ -136,6 +136,7 @@ class PlanItem:
     original_bytes: int
     budget: int
     action: str  # "copy"（原本达标）或 "compress"
+    target: Optional[Path] = None
 
 
 # ---------------------------------------------------------------- 文件收集
@@ -159,8 +160,29 @@ def collect_inputs(
     recursive: bool = True,
     exclude_dirs: Sequence[Union[str, Path]] = (),
 ) -> List[Path]:
-    """把用户给的文件/文件夹展开成去重后的图片列表（跳过输出目录本身）。"""
-    excluded = [Path(p).resolve() for p in exclude_dirs]
+    """把用户给的文件/文件夹展开成去重后的图片列表（跳过输出目录本身）。
+
+    例外：如果"输出目录"就是某个输入目录本身（用户写了 ``-o .`` 这种），
+    不做排除——否则整批文件会被静默过滤掉、一个都不处理。
+    这种情况下的自我保护由 :func:`plan_targets` 负责（绝不覆盖本批次的源文件）。
+    """
+    input_roots = set()
+    for raw in paths:
+        try:
+            input_roots.add(os.path.normcase(str(Path(raw).resolve())))
+        except OSError:  # pragma: no cover
+            continue
+
+    excluded: List[str] = []
+    for item in exclude_dirs:
+        try:
+            resolved = os.path.normcase(str(Path(item).resolve()))
+        except OSError:  # pragma: no cover
+            continue
+        if resolved in input_roots:
+            continue
+        excluded.append(resolved)
+
     collected: List[Path] = []
     seen = set()
 
@@ -180,7 +202,8 @@ def collect_inputs(
                 key = candidate
             if key in seen:
                 continue
-            if any(str(key).lower().startswith(str(ex).lower()) for ex in excluded):
+            key_text = os.path.normcase(str(key))
+            if any(key_text.startswith(ex + os.sep) for ex in excluded):
                 continue
             seen.add(key)
             collected.append(candidate)
@@ -271,9 +294,89 @@ def allocate_budgets(sizes: Sequence[int], total: int, minimum: int = 1024) -> L
 # ---------------------------------------------------------------- 执行
 
 
-def _worker(payload: Tuple[str, str, FitConfig, bool]) -> FileResult:
-    source, dst_dir, cfg, overwrite = payload
-    return compress_file(source, dst_dir, cfg, overwrite=overwrite)
+def _reserve(
+    output_dir: Path,
+    stem: str,
+    suffix: str,
+    source: Path,
+    overwrite: bool,
+    used: set,
+    batch_sources: set,
+) -> Path:
+    """在输出目录里定下一个不冲突的文件名（纯函数式，不创建文件）。
+
+    冲突规则：
+
+    * 本批次里已经分配过的名字不能再分配（并行时也确定）
+    * 本批次的**任何源文件**都不能被覆盖，哪怕开了 ``--overwrite``
+    * 磁盘上已存在且没开 overwrite → 换成 ``名字(1)``
+    """
+    candidate = Path(output_dir) / f"{stem}{suffix}"
+    index = 1
+    while True:
+        key = os.path.normcase(str(candidate))
+        if key in batch_sources:
+            taken = True
+        elif key in used:
+            taken = True
+        elif candidate.exists() and not overwrite:
+            taken = True
+        else:
+            taken = False
+        if not taken:
+            used.add(key)
+            return candidate
+        candidate = Path(output_dir) / f"{stem}({index}){suffix}"
+        index += 1
+
+
+def plan_targets(
+    inputs: Sequence[Path],
+    sizes: Sequence[int],
+    budgets: Sequence[int],
+    options: "BatchOptions",
+) -> List[Path]:
+    """一次性算出所有输出文件名。
+
+    为什么要在主进程里算：并行时如果让每个 worker 自己找空名字，
+    两个 worker 可能同时看到"这个名字没人用"，最终产物名就不确定了。
+    统一在开始前分配好，``-j 1`` 和 ``-j 4`` 的结果才能逐字节一致。
+
+    另外，同一次处理里出现同名文件（比如 ``A/证书.jpg`` 和 ``B/证书.jpg``）时，
+    用上级目录名做前缀区分（``A_证书.jpg``），比 ``证书(1).jpg`` 更好认。
+    """
+    output_dir = Path(options.output_dir)
+    stems: Dict[str, int] = {}
+    for path in inputs:
+        key = path.stem.lower()
+        stems[key] = stems.get(key, 0) + 1
+
+    batch_sources = set()
+    for path in inputs:
+        try:
+            batch_sources.add(os.path.normcase(str(path.resolve())))
+        except OSError:  # pragma: no cover
+            batch_sources.add(os.path.normcase(str(path)))
+
+    used: set = set()
+    targets: List[Path] = []
+    for source, size, budget in zip(inputs, sizes, budgets):
+        keep_format = options.copy_if_fits and size <= budget
+        suffix = (source.suffix.lower() or ".jpg") if keep_format else ".jpg"
+        stem = source.stem
+        if stems.get(stem.lower(), 0) > 1:
+            parent = source.parent.name
+            if parent:
+                stem = f"{parent}_{stem}"
+        targets.append(
+            _reserve(output_dir, stem, suffix, source, options.overwrite, used, batch_sources)
+        )
+    return targets
+
+
+def _worker(payload: Tuple[str, str, FitConfig, bool, str]) -> FileResult:
+    source, dst_dir, cfg, overwrite, target = payload
+    return compress_file(source, dst_dir, cfg, overwrite=overwrite, target=target)
 
 
 def plan_batch(
@@ -284,10 +387,13 @@ def plan_batch(
     inputs = collect_inputs(paths, options.recursive, exclude_dirs=[options.output_dir])
     sizes = [path.stat().st_size for path in inputs]
     budgets = _budgets_for(sizes, options)
+    targets = plan_targets(inputs, sizes, budgets, options)
     items: List[PlanItem] = []
-    for path, size, budget in zip(inputs, sizes, budgets):
+    for path, size, budget, target in zip(inputs, sizes, budgets, targets):
         action = "copy" if (options.copy_if_fits and size <= budget) else "compress"
-        items.append(PlanItem(source=path, original_bytes=size, budget=budget, action=action))
+        items.append(
+            PlanItem(source=path, original_bytes=size, budget=budget, action=action, target=target)
+        )
     return items
 
 
@@ -324,11 +430,12 @@ def run_batch(
 
     sizes = [path.stat().st_size for path in inputs]
     budgets = _budgets_for(sizes, options)
+    targets = plan_targets(inputs, sizes, budgets, options)
     report.output_dir.mkdir(parents=True, exist_ok=True)
 
     payloads = [
-        (str(path), str(options.output_dir), options.fit_config(budget), options.overwrite)
-        for path, budget in zip(inputs, budgets)
+        (str(path), str(options.output_dir), options.fit_config(budget), options.overwrite, str(target))
+        for path, budget, target in zip(inputs, budgets, targets)
     ]
     total = len(payloads)
 
@@ -337,7 +444,7 @@ def run_batch(
             if should_cancel and should_cancel():
                 break
             result = compress_file(
-                payload[0], payload[1], payload[2], overwrite=payload[3]
+                payload[0], payload[1], payload[2], overwrite=payload[3], target=payload[4]
             )
             report.results.append(result)
             if progress:

@@ -193,5 +193,58 @@ class RunBatchTests(unittest.TestCase):
         self.assertEqual(len(payload["明细"]), 1)
 
 
+class TargetPlanningTests(unittest.TestCase):
+    """输出文件名的分配：并行要确定、重名要好认、源文件要安全。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.inbox = self.root / "材料"
+        self.out = self.root / "压缩"
+        self.inbox.mkdir()
+
+    def _options(self, **kwargs) -> BatchOptions:
+        base = dict(output_dir=self.out, budget=120 * 1024, max_dim=1200, floor_dim=400, dim_step=100)
+        base.update(kwargs)
+        return BatchOptions(**base)
+
+    def test_same_stem_gets_folder_prefix(self):
+        (self.inbox / "A").mkdir()
+        (self.inbox / "B").mkdir()
+        save(document((600, 800)), self.inbox / "A" / "证书.jpg", quality=85)
+        save(photo((600, 400)), self.inbox / "B" / "证书.jpg", quality=85)
+        items = plan_batch([self.inbox], self._options())
+        by_folder = {item.source.parent.name: item.target.name for item in items}
+        self.assertEqual(by_folder["A"], "A_证书.jpg")
+        self.assertEqual(by_folder["B"], "B_证书.jpg")
+
+    def test_targets_are_deterministic(self):
+        for index in range(3):
+            save(photo((500, 400)), self.inbox / f"p{index}.jpg", quality=80)
+        first = [item.target.name for item in plan_batch([self.inbox], self._options())]
+        second = [item.target.name for item in plan_batch([self.inbox], self._options())]
+        self.assertEqual(first, second)
+
+    def test_output_dir_equal_to_input_dir_is_safe(self):
+        source = save(noise((900, 700)), self.inbox / "x.jpg", quality=95)
+        before = source.read_bytes()
+        report = run_batch([self.inbox], self._options(output_dir=self.inbox, overwrite=True))
+        self.assertEqual(len(report.results), 1)
+        self.assertTrue(report.results[0].ok, report.results[0].detail)
+        self.assertEqual(source.read_bytes(), before, "源文件被覆盖了")
+        self.assertNotEqual(report.results[0].target, source)
+
+    def test_overwrite_never_clobbers_a_batch_source(self):
+        """输出目录里放着同名文件时，--overwrite 也不能砸掉本批次的源文件。"""
+        self.out.mkdir(exist_ok=True)
+        victim = save(noise((700, 500), seed=3), self.out / "同名.jpg", quality=90)
+        before = victim.read_bytes()
+        items = plan_batch([self.out], self._options(output_dir=self.out, overwrite=True))
+        self.assertEqual(len(items), 1)
+        self.assertNotEqual(items[0].target, victim)
+        self.assertEqual(victim.read_bytes(), before)
+
+
 if __name__ == "__main__":
     unittest.main()

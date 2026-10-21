@@ -300,11 +300,23 @@ class _Fitter:
         levels = _levels(self.cfg.max_quality, self.cfg.min_quality, self.cfg.quality_step)
         for long_side in sides:
             if not self.fits(long_side, self.cfg.min_quality):
-                continue  # 连最低质量都超预算，换更小的分辨率
-            for quality in levels:
-                if self.fits(long_side, quality):
-                    return self._result(long_side, quality)
+                continue  # 连最低质量都超预算，换更小的分辨率（只花 1 次编码）
+            index = self._best_quality_index(long_side, levels)
+            if index is not None:
+                return self._result(long_side, levels[index])
         return None
+
+    def _best_quality_index(self, long_side: int, levels: Sequence[int]) -> Optional[int]:
+        """在"质量从高到低"的候选里，二分出塞得下的最高质量（体积随质量单调递增）。"""
+        low, high, best = 0, len(levels) - 1, None
+        while low <= high:
+            mid = (low + high) // 2
+            if self.fits(long_side, levels[mid]):
+                best = mid
+                high = mid - 1  # 还能再高一点
+            else:
+                low = mid + 1
+        return best
 
     def search_quality(self, sides_asc: Sequence[int]) -> Optional[FitResult]:
         """质量优先：守住保底质量，在该质量下取能塞下的最大分辨率。"""
@@ -441,6 +453,7 @@ def compress_file(
     cfg: Optional[FitConfig] = None,
     name: Optional[str] = None,
     overwrite: bool = False,
+    target: Optional[Union[str, Path]] = None,
 ) -> FileResult:
     """把单个文件压进预算并写入 ``dst_dir``。
 
@@ -449,6 +462,9 @@ def compress_file(
     * ``copied``     —— 原本就在预算内，按字节复制，不做二次有损压缩
     * ``compressed`` —— 重新编码成功
     * ``failed``     —— 失败原因写在 ``detail`` 里（不抛异常，便于批量继续）
+
+    ``target`` 给了就直接用这个路径，不再自己找空名字——批量并行时由
+    :func:`imgfit.pipeline.plan_targets` 统一分配，避免多个 worker 抢同一个名字。
     """
     cfg = cfg or FitConfig()
     source = Path(source)
@@ -458,17 +474,22 @@ def compress_file(
     original_size = _probe_size(source)
     stem = name or source.stem
 
+    def resolve(suffix: str) -> Path:
+        if target is not None:
+            return Path(target)
+        return unique_target(dst_dir, stem, suffix, source, overwrite)
+
     if cfg.copy_if_fits and original_bytes <= cfg.budget:
         try:
             suffix = source.suffix.lower() or ".jpg"
-            target = unique_target(dst_dir, stem, suffix, source, overwrite)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
+            resolved = resolve(suffix)
+            resolved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, resolved)
             return FileResult(
                 source=source,
-                target=target,
+                target=resolved,
                 original_bytes=original_bytes,
-                output_bytes=target.stat().st_size,
+                output_bytes=resolved.stat().st_size,
                 original_size=original_size,
                 output_size=original_size,
                 quality=None,
@@ -490,13 +511,13 @@ def compress_file(
     try:
         prepared = prepare(source, cfg)
         result = fit(prepared, cfg)
-        target = unique_target(dst_dir, stem, ".jpg", source, overwrite)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _write_atomic(target, result.data)
-        _verify_output(target, cfg.budget, result.size)
+        resolved = resolve(".jpg")
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        _write_atomic(resolved, result.data)
+        _verify_output(resolved, cfg.budget, result.size)
         return FileResult(
             source=source,
-            target=target,
+            target=resolved,
             original_bytes=original_bytes,
             output_bytes=len(result.data),
             original_size=original_size,

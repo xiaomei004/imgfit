@@ -151,25 +151,26 @@ def _print_plan(items, output_dir: Path, budget_note: str) -> None:
     _say(budget_note)
     _say()
     name_width = min(32, max([_width(i.source.name) for i in items] + [8]))
-    _say(
-        "  "
-        + _pad("文件名", name_width)
-        + _pad("原大小", 11, "right")
-        + "  "
-        + _pad("预算", 11, "right")
-        + "  动作"
-    )
+    # 只有出现重名改名（同名文件 / 上级目录前缀）时才多显示一列，平时不占地方
+    renamed = [i for i in items if i.target and i.target.name != i.source.name]
+    target_width = min(30, max([_width(i.target.name) for i in renamed] + [6])) if renamed else 0
+    header = "  " + _pad("文件名", name_width) + _pad("原大小", 11, "right") + "  " + _pad("预算", 11, "right")
+    if renamed:
+        header += "  " + _pad("输出名", target_width)
+    _say(header + "  动作")
     for item in items:
         action = "原样复制" if item.action == "copy" else "重新编码"
-        _say(
+        line = (
             "  "
             + _pad(item.source.name, name_width)
             + _pad(format_size(item.original_bytes), 11, "right")
             + "  "
             + _pad(format_size(item.budget), 11, "right")
-            + "  "
-            + action
         )
+        if renamed:
+            renamed_target = item.target.name if item.target.name != item.source.name else ""
+            line += "  " + _pad(renamed_target, target_width)
+        _say(line + "  " + action)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
