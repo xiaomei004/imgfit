@@ -85,6 +85,34 @@ class GuiTests(unittest.TestCase):
         self.app._insert_result(result)
         self.assertEqual(len(self.app.result_tree.get_children()), 1)
 
+    def test_insert_failed_row(self):
+        from imgfit.engine import ACTION_FAILED, FileResult
+
+        result = FileResult(
+            source=Path("bad.jpg"),
+            target=None,
+            original_bytes=2048,
+            action=ACTION_FAILED,
+            detail="UnidentifiedImageError: 无法识别",
+        )
+        self.app._insert_result(result)
+        row = self.app.result_tree.get_children()[0]
+        values = self.app.result_tree.item(row, "values")
+        self.assertEqual(values[4], "失败")
+
+    def test_mode_mapping_to_quality(self):
+        from imgfit.engine import MODE_QUALITY
+
+        self.app.mode_var.set("质量优先（照片 / 素材）")
+        self.assertEqual(self.app._options().mode, MODE_QUALITY)
+
+    def test_buttons_disabled_before_any_run(self):
+        # 没有报告时，"打开输出目录/导出" 应该是灰的
+        self.assertEqual(str(self.app.open_button.cget("state")), "disabled")
+        self.assertEqual(str(self.app.export_button.cget("state")), "disabled")
+        self.app._open_output()   # 不应抛异常
+        self.app._export()        # 不应弹对话框、不应抛异常
+
 
 if __name__ == "__main__":
     unittest.main()

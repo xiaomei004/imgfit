@@ -80,6 +80,22 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn("[1/", output)
 
+    def test_dry_run_shows_output_column_when_renamed(self):
+        """同名文件会被改名为 目录_文件名，干运行必须把这件事显式打出来。"""
+        (self.inbox / "子目录").mkdir()
+        save(photo((300, 200)), self.inbox / "子目录" / "成绩单.jpg", quality=75)
+        code, output = run_cli([str(self.inbox), "-o", str(self.out), "-n"])
+        self.assertEqual(code, 0, output)
+        self.assertIn("输出名", output)
+        self.assertIn("子目录_成绩单.jpg", output)
+        self.assertFalse(self.out.exists())
+
+    def test_total_budget_mode_runs(self):
+        code, output = run_cli([str(self.inbox), "-o", str(self.out), "--total", "600kb", "-q"])
+        self.assertEqual(code, 0, output)
+        total = sum(p.stat().st_size for p in self.out.iterdir())
+        self.assertLessEqual(total, 600 * 1024)
+
     def test_broken_file_gives_partial_exit_code(self):
         (self.inbox / "broken.jpg").write_bytes(b"x" * 400_000)
         code, output = run_cli([str(self.inbox), "-o", str(self.out)])

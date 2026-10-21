@@ -41,7 +41,9 @@ jobs:
         run: python -m imgfit --version
 
       - name: 上传覆盖率数据
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        # 用 Windows 那一格的覆盖率：Ubuntu runner 没有显示器，GUI 测试会 skip，
+        # 统计出来的数字偏低（65% vs 76%），会把徽章带偏
+        if: matrix.os == 'windows-latest' && matrix.python == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml
