@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -26,10 +26,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Graphics :: Graphics Conversion",
 ]
-dependencies = ["Pillow>=9.1"]
+dependencies = ["Pillow>=12.3.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-cov>=4.1", "ruff>=0.6"]
+dev = ["pytest>=9.1.1", "pytest-cov>=7.1.0", "ruff>=0.17.1"]
 
 [project.scripts]
 imgfit = "imgfit.cli:main"
