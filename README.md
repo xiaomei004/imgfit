@@ -78,9 +78,16 @@ cd imgfit
 pip install -e .
 imgfit --help
 
-# 方式二：不安装，直接用（Windows 用 PowerShell）
+# 方式二：不安装，直接用
+#   macOS / Linux：
 PYTHONPATH=src python -m imgfit --help
+#   Windows PowerShell：
+$env:PYTHONPATH="src"; python -m imgfit --help
+#   Windows 上更省事：直接双击 run-gui.bat / 把文件夹拖到 run-cli.bat 上
 ```
+
+> `pip install -e .` 第一次会在构建隔离环境里下载 `setuptools`（Python 3.12 起的 venv 默认不带它），
+> 需要联网一次；之后离线也能正常用。想完全离线就用方式二或两个 `.bat`。
 
 > Windows 下如果 `tkinter` 缺失（某些精简版 Python 会有），`--gui` 会提示改用命令行，CLI 功能不受影响。
 
