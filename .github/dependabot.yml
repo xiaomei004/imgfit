@@ -1,0 +1,33 @@
+# 依赖自动升级：https://docs.github.com/code-security/dependabot/dependabot-options-reference
+#
+# 策略：
+#   * 每月检查一次，避免每周都在你眼前弹 PR
+#   * 小版本/补丁版本合并成一个 PR（groups），大版本单独一个 PR 自己判断
+#   * 每个 PR 都会自动跑 CI（ci.yml 里配了 pull_request 触发），绿了才算能升
+version: 2
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels: ["dependencies"]
+    groups:
+      python-deps:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    labels: ["dependencies"]
+    groups:
+      actions-deps:
+        patterns: ["*"]

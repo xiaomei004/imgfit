@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "imgfit"
-version = "0.1.0"
+version = "0.1.1"
 description = "本地离线批量图片压缩：把每张图片精确压进指定大小预算（默认 200KB）"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -29,7 +29,7 @@ classifiers = [
 dependencies = ["Pillow>=9.1"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "ruff>=0.6"]
+dev = ["pytest>=7", "pytest-cov>=4.1", "ruff>=0.6"]
 
 [project.scripts]
 imgfit = "imgfit.cli:main"
@@ -49,6 +49,18 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.coverage.run]
+source = ["imgfit"]
+branch = true
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
 
 [tool.ruff]
 line-length = 110
