@@ -67,7 +67,7 @@ class BatchOptions:
     copy_if_fits: bool = True
     keep_metadata: bool = False
     background: Tuple[int, int, int] = (255, 255, 255)
-    min_quality: int = 40
+    min_quality: Optional[int] = None
     max_quality: int = 92
     target_quality: int = 75
     max_dim: int = 2200

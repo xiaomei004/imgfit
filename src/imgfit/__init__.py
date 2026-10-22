@@ -23,7 +23,7 @@ from .engine import (
 )
 from .size import SizeError, format_size, parse_size
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __all__ = [
     "__version__",
     "MODE_QUALITY",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "imgfit"
-version = "0.1.1"
+version = "0.2.0"
 description = "本地离线批量图片压缩：把每张图片精确压进指定大小预算（默认 200KB）"
 readme = "README.md"
 requires-python = ">=3.9"

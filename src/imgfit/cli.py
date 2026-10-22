@@ -116,7 +116,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=MODE_RESOLUTION,
         help="resolution=分辨率优先（文档/证书，默认）；quality=质量优先（照片）",
     )
-    parser.add_argument("--min-quality", type=int, default=40, help="质量下限（默认 40）")
+    parser.add_argument("--min-quality", type=int, default=None, help="质量下限（默认：文档模式 10、照片模式 40；历史上是固定 40，已在 0.2.0 修正）")
     parser.add_argument("--max-quality", type=int, default=92, help="质量上限（默认 92）")
     parser.add_argument("--target-quality", type=int, default=75, help="quality 模式的保底质量（默认 75）")
     parser.add_argument("--max-dim", type=int, default=2200, help="长边上限像素（默认 2200）")

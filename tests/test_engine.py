@@ -200,5 +200,30 @@ class CompressFileTests(unittest.TestCase):
         self.assertEqual(unique_target(self.out_dir, "a", ".jpg").name, "a(2).jpg")
 
 
+class FloorTests(EngineTestCase):
+    """质量下限的默认值按模式区分（0.2.0 修正）。"""
+
+    def test_default_floor_depends_on_mode(self):
+        self.assertEqual(FitConfig(mode=MODE_RESOLUTION).quality_floor, 10)
+        self.assertEqual(FitConfig(mode=MODE_QUALITY).quality_floor, 40)
+        self.assertEqual(FitConfig(mode=MODE_RESOLUTION, min_quality=25).quality_floor, 25)
+
+    def test_document_keeps_native_resolution_when_budget_allows(self):
+        """密实文字图 + 够用的预算：应该保留原分辨率，而不是守 q40 去缩尺寸。"""
+        image = document((900, 1200))
+        result = fit(image, FitConfig(budget=200 * 1024, max_dim=2000, floor_dim=400))
+        self.assertEqual(result.size, (900, 1200))
+        self.assertLessEqual(len(result.data), 200 * 1024)
+
+    def test_candidate_sides_strictly_decreasing(self):
+        from imgfit.engine import _candidate_sides
+
+        main, low = _candidate_sides(FitConfig(), 4000)
+        self.assertEqual(main, sorted(set(main), reverse=True))
+        self.assertGreaterEqual(len(main), 10)
+        self.assertTrue(all(s >= 800 for s in main))
+        self.assertTrue(all(s < 800 for s in low))
+
+
 if __name__ == "__main__":
     unittest.main()

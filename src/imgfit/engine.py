@@ -71,23 +71,26 @@ class FitConfig:
 
     budget          : 硬预算，单张输出不得超过（字节）
     mode            : "resolution" 分辨率优先 / "quality" 质量优先
-    min_quality     : 质量下限，再低就不如放弃分辨率
+    min_quality     : 质量下限；``None`` 表示按模式给默认值
+                      （文档 10 / 照片 40，见 :attr:`quality_floor`）
     max_quality     : 质量上限（初值）
     target_quality  : quality 模式的保底质量
     max_dim         : 长边上限，超过此值对上传没有意义
     floor_dim       : 长边下限，分辨率优先模式下不允许再缩小
     hard_min_dim    : 极端情况下的绝对下限
+    dim_ratio       : 分辨率搜索的递减比例（0.97 = 每档缩 3%）
     """
 
     budget: int = 200 * 1024
     mode: str = MODE_RESOLUTION
-    min_quality: int = 40
+    min_quality: Optional[int] = None
     max_quality: int = 92
     target_quality: int = 75
     quality_step: int = 2
     max_dim: int = 2200
     floor_dim: int = 800
     hard_min_dim: int = 320
+    dim_ratio: float = 0.97
     dim_step: int = 50
     subsampling: int = 2
     copy_if_fits: bool = True
@@ -99,18 +102,33 @@ class FitConfig:
             raise ValueError("预算必须为正数")
         if self.mode not in MODES:
             raise ValueError(f"未知模式: {self.mode!r}（可选 {'/'.join(MODES)}）")
-        if not 1 <= self.min_quality <= self.max_quality <= 100:
+        floor = self.quality_floor
+        if not 1 <= floor <= self.max_quality <= 100:
             raise ValueError("质量必须满足 1 <= min_quality <= max_quality <= 100")
-        if not self.min_quality <= self.target_quality <= self.max_quality:
+        if not floor <= self.target_quality <= self.max_quality:
             raise ValueError("target_quality 必须落在 [min_quality, max_quality] 区间内")
         if not 1 <= self.quality_step <= 32:
             raise ValueError("quality_step 必须在 1~32 之间")
         if not 1 <= self.hard_min_dim <= self.floor_dim <= self.max_dim:
             raise ValueError("必须满足 1 <= hard_min_dim <= floor_dim <= max_dim")
+        if not 0.5 <= self.dim_ratio < 1.0:
+            raise ValueError("dim_ratio 必须落在 [0.5, 1.0) 之间")
         if self.dim_step < 1:
             raise ValueError("dim_step 必须为正整数")
         if self.subsampling not in (0, 1, 2):
             raise ValueError("subsampling 只能是 0 / 1 / 2")
+
+    @property
+    def quality_floor(self) -> int:
+        """质量下限。
+
+        历史上这里是一个固定的 40，结果在密实的扫描件上把搜索逼向"降分辨率"，
+        反而输给"原分辨率 + 低质量"这种最朴素的做法。文档类真正怕的是字被缩小，
+        质量掉到 10~15 仍可辨认；照片类掉到那个档位会出色块，所以两者分开给。
+        """
+        if self.min_quality is not None:
+            return int(self.min_quality)
+        return 10 if self.mode == MODE_RESOLUTION else 40
 
 
 @dataclass(frozen=True)
@@ -297,9 +315,10 @@ class _Fitter:
 
     def search_resolution(self, sides: Sequence[int]) -> Optional[FitResult]:
         """分辨率优先：从大往小找，第一个"最低质量塞得下"的尺寸就采用。"""
-        levels = _levels(self.cfg.max_quality, self.cfg.min_quality, self.cfg.quality_step)
+        floor = self.cfg.quality_floor
+        levels = _levels(self.cfg.max_quality, floor, self.cfg.quality_step)
         for long_side in sides:
-            if not self.fits(long_side, self.cfg.min_quality):
+            if not self.fits(long_side, floor):
                 continue  # 连最低质量都超预算，换更小的分辨率（只花 1 次编码）
             index = self._best_quality_index(long_side, levels)
             if index is not None:
@@ -316,11 +335,20 @@ class _Fitter:
                 high = mid - 1  # 还能再高一点
             else:
                 low = mid + 1
+        if best is None:
+            return None
+        # 邻域校正：体积随质量"基本"单调，但 Huffman 表差异偶尔会让高一档的体积更小，
+        # 二分可能因此错过更好的落点。往高一档试一步，命中就抬上去。
+        for index in (best - 1, best - 2):
+            if 0 <= index < len(levels) and levels[index] > levels[best]:
+                if self.fits(long_side, levels[index]):
+                    best = index
+                    break
         return best
 
     def search_quality(self, sides_asc: Sequence[int]) -> Optional[FitResult]:
         """质量优先：守住保底质量，在该质量下取能塞下的最大分辨率。"""
-        levels = _levels(self.cfg.target_quality, self.cfg.min_quality, self.cfg.quality_step)
+        levels = _levels(self.cfg.target_quality, self.cfg.quality_floor, self.cfg.quality_step)
         for quality in levels:
             long_side = self._largest_fitting_side(sides_asc, quality)
             if long_side is not None:
@@ -344,14 +372,25 @@ def _candidate_sides(cfg: FitConfig, native: int) -> Tuple[List[int], List[int]]
     cap = min(native, cfg.max_dim)
     floor = min(cfg.floor_dim, cap)
     main: List[int] = []
+def _candidate_sides(cfg: FitConfig, native: int) -> Tuple[List[int], List[int]]:
+    """生成候选长边。
+
+    主区间按 ``dim_ratio`` 等比递减（每档缩 3%），比固定 50px 步长更贴边：
+    1358 宽时 50px 相当于 3.7% 的粒度，可能错过"刚好再大一点"的解；
+    等比递减在大小图上粒度一致，点数还更少。
+    """
+    cap = min(native, cfg.max_dim)
+    floor = min(cfg.floor_dim, cap)
+    main: List[int] = []
     cur = cap
     while cur > floor:
         main.append(cur)
-        cur -= cfg.dim_step
+        nxt = int(cur * cfg.dim_ratio)
+        cur = max(nxt, cur - 1)  # 保证严格递减，避免死循环
     main.append(floor)
 
     low: List[int] = []
-    cur = floor - cfg.dim_step
+    cur = floor - max(cfg.dim_step, 100)
     step = max(cfg.dim_step, 100)
     while cur >= cfg.hard_min_dim:
         low.append(cur)
@@ -380,10 +419,10 @@ def fit(image: Union[Prepared, Image.Image], cfg: Optional[FitConfig] = None) ->
         result = fitter.search_resolution(main) or fitter.search_resolution(low)
 
     if result is None:
-        smallest = len(fitter.encoded(cfg.hard_min_dim, cfg.min_quality))
+        smallest = len(fitter.encoded(cfg.hard_min_dim, cfg.quality_floor))
         raise FitError(
             "预算 {budget} 字节过小：即使缩到 {dim}px、质量 {q} 也还需 {need} 字节".format(
-                budget=cfg.budget, dim=cfg.hard_min_dim, q=cfg.min_quality, need=smallest
+                budget=cfg.budget, dim=cfg.hard_min_dim, q=cfg.quality_floor, need=smallest
             )
         )
     return result
