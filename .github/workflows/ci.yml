@@ -19,9 +19,9 @@ jobs:
         python: ["3.9", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -44,7 +44,7 @@ jobs:
         # 用 Windows 那一格的覆盖率：Ubuntu runner 没有显示器，GUI 测试会 skip，
         # 统计出来的数字偏低（65% vs 76%），会把徽章带偏
         if: matrix.os == 'windows-latest' && matrix.python == '3.12'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-xml
           path: coverage.xml
@@ -61,10 +61,10 @@ jobs:
 
     steps:
       # 必须 checkout：徽章脚本在仓库里，不 checkout 就只有下载下来的 coverage.xml
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 下载覆盖率数据
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: coverage-xml
 
